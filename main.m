@@ -488,6 +488,15 @@ static NSView *row(NSString *title, NSString *detail, NSView *control) { return 
 
 // ---- Settings window -----------------------------------------------------
 
+// System Settings uses mini-size switches; NSSwitch defaults to the large "regular" size.
+- (NSSwitch *)makeSwitch {
+    NSSwitch *sw = [NSSwitch new];
+    sw.controlSize = NSControlSizeMini;
+    sw.target = self;
+    sw.action = @selector(switchChanged:);
+    return sw;
+}
+
 - (void)buildWindow {
     const CGFloat W = 460;
 
@@ -521,8 +530,8 @@ static NSView *row(NSString *title, NSString *detail, NSView *control) { return 
             grant)]);
 
     // Gestures
-    self.clickSwitch = [NSSwitch new]; self.clickSwitch.target = self; self.clickSwitch.action = @selector(switchChanged:);
-    self.tapSwitch   = [NSSwitch new]; self.tapSwitch.target = self;   self.tapSwitch.action   = @selector(switchChanged:);
+    self.clickSwitch = [self makeSwitch];
+    self.tapSwitch   = [self makeSwitch];
     NSView *gestures = section(@"Gestures", @[
         row(@"Three-finger click", @"Press the trackpad down with three fingers.", self.clickSwitch),
         row(@"Three-finger tap", @"Lightly tap with three fingers. Swipes are ignored.", self.tapSwitch)]);
@@ -533,7 +542,10 @@ static NSView *row(NSString *title, NSString *detail, NSView *control) { return 
                                          target:self action:@selector(sliderChanged:)];
     self.moveSlider = [NSSlider sliderWithValue:[d doubleForKey:kTapMovePct] minValue:1 maxValue:10
                                          target:self action:@selector(sliderChanged:)];
-    for (NSSlider *s in @[self.timeSlider, self.moveSlider]) [s.widthAnchor constraintEqualToConstant:140].active = YES;
+    for (NSSlider *s in @[self.timeSlider, self.moveSlider]) {
+        s.controlSize = NSControlSizeSmall;   // matches the sliders in System Settings
+        [s.widthAnchor constraintEqualToConstant:140].active = YES;
+    }
     self.timeValue = label(@"", 12, NSFontWeightRegular, NSColor.secondaryLabelColor);
     self.moveValue = label(@"", 12, NSFontWeightRegular, NSColor.secondaryLabelColor);
     for (NSTextField *t in @[self.timeValue, self.moveValue]) {
@@ -557,8 +569,8 @@ static NSView *row(NSString *title, NSString *detail, NSView *control) { return 
     NSView *test = section(@"Try it", @[self.testPad]);
 
     // General
-    self.loginSwitch    = [NSSwitch new]; self.loginSwitch.target = self;    self.loginSwitch.action = @selector(switchChanged:);
-    self.menuIconSwitch = [NSSwitch new]; self.menuIconSwitch.target = self; self.menuIconSwitch.action = @selector(switchChanged:);
+    self.loginSwitch    = [self makeSwitch];
+    self.menuIconSwitch = [self makeSwitch];
     NSView *general = section(@"General", @[
         row(@"Launch at login", nil, self.loginSwitch),
         row(@"Show icon in menu bar", @"When hidden, open MiddleTap from Applications to see this window.", self.menuIconSwitch)]);
