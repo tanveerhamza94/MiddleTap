@@ -391,6 +391,7 @@ static NSView *row(NSString *title, NSString *detail, NSView *control) { return 
     [d registerDefaults:@{ kClickEnabled: @YES, kTapEnabled: @YES, kTapTimeMs: @300,
                            kTapMovePct: @4, kShowMenuIcon: @YES, kLaunchedOnce: @NO }];
     [self loadSettings];
+    [self buildMainMenu];
     [self buildMenu];
 
     if (!loadMultitouch()) {
@@ -479,6 +480,59 @@ static NSView *row(NSString *title, NSString *detail, NSView *control) { return 
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(2 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
         [self startMultitouch];
     });
+}
+
+// ---- Main menu (shown while the settings window is open) ----------------
+
+- (void)buildMainMenu {
+    NSMenu *main = [NSMenu new];
+
+    // App menu
+    NSMenuItem *appItem = [main addItemWithTitle:@"" action:nil keyEquivalent:@""];
+    NSMenu *appMenu = [NSMenu new];
+    [appMenu addItemWithTitle:@"About MiddleTap" action:@selector(orderFrontStandardAboutPanel:) keyEquivalent:@""];
+    [appMenu addItem:NSMenuItem.separatorItem];
+    NSMenuItem *settings = [appMenu addItemWithTitle:@"Settings…" action:@selector(showSettings:) keyEquivalent:@","];
+    settings.target = self;
+    [appMenu addItem:NSMenuItem.separatorItem];
+    [appMenu addItemWithTitle:@"Hide MiddleTap" action:@selector(hide:) keyEquivalent:@"h"];
+    NSMenuItem *hideOthers = [appMenu addItemWithTitle:@"Hide Others" action:@selector(hideOtherApplications:) keyEquivalent:@"h"];
+    hideOthers.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagOption;
+    [appMenu addItemWithTitle:@"Show All" action:@selector(unhideAllApplications:) keyEquivalent:@""];
+    [appMenu addItem:NSMenuItem.separatorItem];
+    [appMenu addItemWithTitle:@"Quit MiddleTap" action:@selector(terminate:) keyEquivalent:@"q"];
+    appItem.submenu = appMenu;
+
+    // Edit menu, so ⌘C / ⌘A behave in any text in the window
+    NSMenuItem *editItem = [main addItemWithTitle:@"Edit" action:nil keyEquivalent:@""];
+    NSMenu *edit = [[NSMenu alloc] initWithTitle:@"Edit"];
+    [edit addItemWithTitle:@"Copy" action:@selector(copy:) keyEquivalent:@"c"];
+    [edit addItemWithTitle:@"Select All" action:@selector(selectAll:) keyEquivalent:@"a"];
+    editItem.submenu = edit;
+
+    // Window menu (macOS fills in the window list automatically)
+    NSMenuItem *winItem = [main addItemWithTitle:@"Window" action:nil keyEquivalent:@""];
+    NSMenu *win = [[NSMenu alloc] initWithTitle:@"Window"];
+    [win addItemWithTitle:@"Minimize" action:@selector(performMiniaturize:) keyEquivalent:@"m"];
+    [win addItemWithTitle:@"Zoom" action:@selector(performZoom:) keyEquivalent:@""];
+    [win addItem:NSMenuItem.separatorItem];
+    [win addItemWithTitle:@"Close" action:@selector(performClose:) keyEquivalent:@"w"];
+    winItem.submenu = win;
+
+    NSApp.mainMenu = main;
+    NSApp.windowsMenu = win;
+}
+
+// Full app (Dock icon, ⌘Tab, menu bar) while the window is open;
+// back to a quiet menu-bar utility when it closes.
+- (void)becomeRegularApp {
+    if (NSApp.activationPolicy != NSApplicationActivationPolicyRegular)
+        NSApp.activationPolicy = NSApplicationActivationPolicyRegular;
+}
+
+- (void)becomeMenuBarApp {
+    if (NSApp.activationPolicy != NSApplicationActivationPolicyAccessory)
+        NSApp.activationPolicy = NSApplicationActivationPolicyAccessory;
 }
 
 // ---- Menu bar ------------------------------------------------------------
@@ -648,6 +702,8 @@ static NSView *row(NSString *title, NSString *detail, NSView *control) { return 
     [self.rootView layoutSubtreeIfNeeded];
     [self.window setContentSize:self.rootView.fittingSize];
     if (!self.window.isVisible) [self.window center];
+    [self becomeRegularApp];
+    if (self.window.isMiniaturized) [self.window deminiaturize:nil];
     [self.window makeKeyAndOrderFront:nil];
     if (@available(macOS 14.0, *)) [NSApp activate];
     else [NSApp activateIgnoringOtherApps:YES];
@@ -663,6 +719,8 @@ static NSView *row(NSString *title, NSString *detail, NSView *control) { return 
 - (void)windowWillClose:(NSNotification *)n {
     [self.uiTimer invalidate];
     self.uiTimer = nil;
+    // Defer so the close animation finishes before the Dock icon goes away.
+    dispatch_async(dispatch_get_main_queue(), ^{ [self becomeMenuBarApp]; });
 }
 
 // ---- State → UI ----------------------------------------------------------
