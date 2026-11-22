@@ -13,7 +13,17 @@ clang -fobjc-arc -O2 -Wall -arch arm64 -mmacosx-version-min=13.0 \
 
 cp Info.plist "$APP/Contents/Info.plist"
 cp AppIcon.icns "$APP/Contents/Resources/AppIcon.icns"
-codesign --force --sign - "$APP"   # ad-hoc signature (needed on Apple silicon)
+
+# Sign with a stable certificate so macOS keeps the Accessibility permission across
+# rebuilds. Falls back to ad-hoc signing (permission must be re-granted each build).
+IDENTITY="MiddleTap Self-Signed"
+if security find-identity -p codesigning | grep -q "$IDENTITY"; then
+  codesign --force --sign "$IDENTITY" --identifier com.hamza.middletap "$APP"
+else
+  echo "⚠️  No \"$IDENTITY\" certificate found. Run ./make-signing-cert.sh once so"
+  echo "   rebuilds keep their Accessibility permission. Using ad-hoc signing for now."
+  codesign --force --sign - "$APP"
+fi
 
 echo "Built $APP"
 if [[ "${1:-}" == "--install" ]]; then

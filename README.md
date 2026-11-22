@@ -24,7 +24,7 @@ chmod +x build.sh
 
 ## Notes
 
-- **Rebuilding** changes the app's signature, so macOS may silently stop trusting it. If middle click stops working after a rebuild, remove MiddleTap from the Accessibility list, add it back, and relaunch.
+- **Rebuilding without losing permission:** run `./make-signing-cert.sh` once. It creates a self-signed certificate in your keychain, and `build.sh` signs every build with it, so macOS keeps the Accessibility permission across rebuilds. Without it, builds are signed ad-hoc, and the permission has to be re-granted after each rebuild.
 - **Tuning:** tap time and movement tolerance are sliders in the settings window.
 - **Icon:** `AppIcon.svg` is the source of the app icon, and `AppIcon.icns` is what gets bundled.
 - **Private framework:** MiddleTap reads finger counts from Apple's private `MultitouchSupport` framework, the same one MiddleClick and BetterTouchTool use. A future macOS update could break it. If that happens, the app shows an alert instead of misbehaving.
