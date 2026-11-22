@@ -67,6 +67,7 @@ static _Atomic double gMaxTapDuration = 0.30;        // seconds
 static _Atomic float  gMaxTapMovement = 0.04f;       // normalized pad units
 
 static CFMachPortRef gEventTap = NULL;
+static CFRunLoopSourceRef gEventTapSource = NULL;
 static bool gMiddleDown = false;                     // main thread only
 
 // Tap-gesture tracking (multitouch callback thread only)
@@ -122,10 +123,30 @@ static int touchCallback(MTDeviceRef dev, const MTTouch *touches, int n, double 
     return 0;
 }
 
+// Fully removes the event tap. Used when Accessibility permission is revoked: a tap
+// left in place without permission can stall mouse input system-wide.
+static void removeEventTap(void) {
+    if (!gEventTap) return;
+    CGEventTapEnable(gEventTap, false);
+    if (gEventTapSource) {
+        CFRunLoopRemoveSource(CFRunLoopGetMain(), gEventTapSource, kCFRunLoopCommonModes);
+        CFRelease(gEventTapSource);
+        gEventTapSource = NULL;
+    }
+    CFMachPortInvalidate(gEventTap);
+    CFRelease(gEventTap);
+    gEventTap = NULL;
+    gMiddleDown = false;
+}
+
 static CGEventRef eventTapCallback(CGEventTapProxy proxy, CGEventType type, CGEventRef ev, void *ref) {
     (void)proxy; (void)ref;
     if (type == kCGEventTapDisabledByTimeout || type == kCGEventTapDisabledByUserInput) {
-        if (gEventTap) CGEventTapEnable(gEventTap, true);
+        // Only re-enable if we still have permission; otherwise back off completely.
+        if (gEventTap) {
+            if (AXIsProcessTrusted()) CGEventTapEnable(gEventTap, true);
+            else dispatch_async(dispatch_get_main_queue(), ^{ removeEventTap(); });
+        }
         return ev;
     }
     switch (type) {
@@ -388,11 +409,15 @@ static NSView *row(NSString *title, NSString *detail, NSView *control) { return 
     NSDictionary *opts = @{ (__bridge id)kAXTrustedCheckOptionPrompt: @YES };
     AXIsProcessTrustedWithOptions((__bridge CFDictionaryRef)opts);
     BOOL tapOK = [self installEventTap];
-    if (!tapOK) {
-        self.retryTimer = [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(NSTimer *t) {
-            if ([self installEventTap]) { [t invalidate]; self.retryTimer = nil; [self refreshUI]; }
-        }];
-    }
+
+    // Permission watchdog: installs the tap once access is granted, and removes it
+    // promptly if access is revoked while running (e.g. by tccutil or System Settings).
+    self.retryTimer = [NSTimer scheduledTimerWithTimeInterval:2.0 repeats:YES block:^(NSTimer *t) {
+        BOOL had = gEventTap != NULL;
+        if (had && !AXIsProcessTrusted()) removeEventTap();
+        else if (!had) [self installEventTap];
+        if (had != (gEventTap != NULL)) [self refreshUI];
+    }];
 
     // Open the window on first launch, or when permission is still missing.
     if (![d boolForKey:kLaunchedOnce] || !tapOK) {
@@ -422,9 +447,8 @@ static NSView *row(NSString *title, NSString *detail, NSView *control) { return 
     gEventTap = CGEventTapCreate(kCGSessionEventTap, kCGHeadInsertEventTap, kCGEventTapOptionDefault,
                                  mask, eventTapCallback, NULL);
     if (!gEventTap) return NO;
-    CFRunLoopSourceRef src = CFMachPortCreateRunLoopSource(NULL, gEventTap, 0);
-    CFRunLoopAddSource(CFRunLoopGetMain(), src, kCFRunLoopCommonModes);
-    CFRelease(src);
+    gEventTapSource = CFMachPortCreateRunLoopSource(NULL, gEventTap, 0);
+    CFRunLoopAddSource(CFRunLoopGetMain(), gEventTapSource, kCFRunLoopCommonModes);
     CGEventTapEnable(gEventTap, true);
     return YES;
 }

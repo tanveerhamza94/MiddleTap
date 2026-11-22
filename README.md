@@ -29,3 +29,4 @@ chmod +x build.sh
 - **Icon:** `AppIcon.svg` is the source of the app icon, and `AppIcon.icns` is what gets bundled.
 - **Private framework:** MiddleTap reads finger counts from Apple's private `MultitouchSupport` framework, the same one MiddleClick and BetterTouchTool use. A future macOS update could break it. If that happens, the app shows an alert instead of misbehaving.
 - **External trackpads:** if you connect a Magic Trackpad while MiddleTap is running, choose **Rescan Trackpads**. Trackpads are re-attached automatically after sleep.
+- **Before resetting permissions:** quit MiddleTap before running `tccutil reset`. The app also removes its click hook within about 2 seconds if its permission is revoked while it runs.
